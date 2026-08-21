@@ -18,9 +18,16 @@ def download_youtube_audio(url: str) -> str:
         # web client. These generally don't require a PO token, which
         # is what causes "HTTP Error 403: Forbidden" on the web client
         # when no PO-token provider is configured.
+        # YouTube has been rolling out a "SABR-only" streaming
+        # experiment that strips download URLs from android/ios/web
+        # clients unless a PO token is supplied. The "tv" client is
+        # currently the most reliable fallback that still works
+        # without one (falls back to itag 18 — 360p combined
+        # audio+video — which is fine since we only need the audio).
+        # See: https://github.com/yt-dlp/yt-dlp/issues/12482
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios", "web"],
+                "player_client": ["tv", "web_safari", "android", "ios"],
                 "player_skip": ["webpage", "configs"],
             },
         },
@@ -35,12 +42,20 @@ def download_youtube_audio(url: str) -> str:
         "quiet": True,
     }
 
-    # Optional: pick up cookies from a cookies.txt file if you have one
-    # (helps with age-restricted / member-only content). Safe to leave
-    # this file absent — it's skipped if not found.
+    # Cookies are required once YouTube serves a bot-check ("Sign in to
+    # confirm you're not a bot"), which happens often on cloud/datacenter
+    # IPs like Streamlit Community Cloud, even when it doesn't happen
+    # locally. app.py writes this file from st.secrets on startup.
     cookie_path = os.path.join(os.path.dirname(__file__), "..", "youtube_cookies.txt")
-    if os.path.exists(cookie_path):
+    if os.path.exists(cookie_path) and os.path.getsize(cookie_path) > 0:
         ydl_opts["cookiefile"] = cookie_path
+        print(f"Using cookies from: {cookie_path}")
+    else:
+        print(
+            "WARNING: No youtube_cookies.txt found. If you see a "
+            "'Sign in to confirm you are not a bot' error, this is why — "
+            "add fresh YouTube cookies to Streamlit Secrets."
+        )
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
