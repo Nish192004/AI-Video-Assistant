@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 downloades/
 vector_db/
+   echo "youtube_cookies.txt" >> .gitignore
