@@ -14,7 +14,6 @@ def download_youtube_audio(url: str) -> str:
     Requirements:
         - yt-dlp[default]
         - FFmpeg
-        - Deno
     """
 
     output_path = os.path.join(
@@ -38,50 +37,46 @@ def download_youtube_audio(url: str) -> str:
             }
         ],
 
-        # JavaScript runtime for YouTube challenge solving
-        "js_runtimes": {
-            "deno": {}
-        },
-
-        # Download EJS challenge solver
-        "remote_components": {
-            "ejs": "github"
-        },
-
-        # Don't use expired browser cookies
+        # Don't use browser cookies
         "cookiefile": None,
 
         # Don't download playlists
         "noplaylist": True,
 
-        # Don't clutter Streamlit logs
+        # Keep Streamlit logs reasonably clean
         "quiet": True,
-
-        # Show errors/warnings when something fails
         "no_warnings": False,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
-            # Extract and download
-            info = ydl.extract_info(url, download=True)
+            # Download YouTube audio
+            info = ydl.extract_info(
+                url,
+                download=True
+            )
 
-            # Original downloaded filename
+            # Get downloaded filename
             original_path = ydl.prepare_filename(info)
 
-            # FFmpeg changes the extension to WAV
-            wav_path = os.path.splitext(original_path)[0] + ".wav"
+            # FFmpeg converts it to WAV
+            wav_path = (
+                os.path.splitext(original_path)[0]
+                + ".wav"
+            )
 
             if not os.path.exists(wav_path):
                 raise FileNotFoundError(
-                    f"Audio conversion failed. WAV file not found: {wav_path}"
+                    f"WAV file was not created: {wav_path}"
                 )
 
             return wav_path
 
     except Exception as e:
-        print(f"YouTube download failed: {e}")
+        print(
+            f"YouTube download failed: {e}"
+        )
         raise
 
 
@@ -95,9 +90,11 @@ def convert_to_wav(input_path: str) -> str:
         + "_converted.wav"
     )
 
-    audio = AudioSegment.from_file(input_path)
+    audio = AudioSegment.from_file(
+        input_path
+    )
 
-    # Whisper works well with mono 16 kHz audio
+    # Convert to mono 16 kHz
     audio = (
         audio
         .set_channels(1)
@@ -117,9 +114,13 @@ def chunk_audio(
     chunk_minutes: int = 10
 ) -> list:
 
-    audio = AudioSegment.from_wav(wav_path)
+    audio = AudioSegment.from_wav(
+        wav_path
+    )
 
-    chunk_ms = chunk_minutes * 60 * 1000
+    chunk_ms = (
+        chunk_minutes * 60 * 1000
+    )
 
     chunks = []
 
