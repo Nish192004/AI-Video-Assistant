@@ -20,10 +20,9 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 def get_youtube_cookie_file():
     """
-    Read YouTube cookies from Streamlit Secrets and create
-    a temporary Netscape-format cookie file.
+    Read YouTube cookies from Streamlit Secrets.
 
-    Streamlit Secrets:
+    Expected secrets.toml:
 
     [youtube]
     cookies = '''
@@ -55,7 +54,6 @@ def get_youtube_cookie_file():
         return cookie_file.name
 
     except Exception:
-
         try:
             cookie_file.close()
             os.unlink(cookie_file.name)
@@ -74,17 +72,12 @@ def download_youtube_audio(url: str) -> str:
     Download YouTube audio and convert it to WAV.
 
     Requirements:
-        - yt-dlp[default]
-        - FFmpeg
-        - Deno
+        yt-dlp[default]
+        FFmpeg
+        Deno
 
     Optional:
-        - YouTube cookies from Streamlit Secrets
-
-    Note:
-        Some YouTube formats may require PO Tokens.
-        bgutil-ytdlp-pot-provider should handle this
-        when correctly configured.
+        YouTube cookies from Streamlit Secrets
     """
 
     output_path = os.path.join(
@@ -97,23 +90,50 @@ def download_youtube_audio(url: str) -> str:
     try:
 
         # ----------------------------------------------------
-        # Get YouTube cookies
+        # Get cookies
         # ----------------------------------------------------
 
         cookie_file = get_youtube_cookie_file()
 
         # ----------------------------------------------------
-        # yt-dlp configuration
+        # yt-dlp options
         # ----------------------------------------------------
 
         ydl_opts = {
+
             # Best available audio
             "format": "bestaudio/best",
 
-            # Output filename
+            # Output
             "outtmpl": output_path,
 
-            # Convert audio to WAV
+            # Don't download playlist
+            "noplaylist": True,
+
+            # Show logs
+            "quiet": False,
+            "no_warnings": False,
+
+            # ------------------------------------------------
+            # JavaScript runtime
+            # ------------------------------------------------
+
+            "js_runtimes": {
+                "deno": {}
+            },
+
+            # ------------------------------------------------
+            # EJS remote component
+            # ------------------------------------------------
+
+            "remote_components": [
+                "ejs:github"
+            ],
+
+            # ------------------------------------------------
+            # Audio conversion
+            # ------------------------------------------------
+
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
@@ -121,25 +141,10 @@ def download_youtube_audio(url: str) -> str:
                     "preferredquality": "192",
                 }
             ],
-
-            # Don't download playlists
-            "noplaylist": True,
-
-            # Debug logs during deployment
-            "quiet": False,
-            "no_warnings": False,
-
-            # ------------------------------------------------
-            # JavaScript challenge solving
-            # ------------------------------------------------
-
-            "js_runtimes": {
-                "deno": {}
-            },
         }
 
         # ----------------------------------------------------
-        # Add cookies only when available
+        # Cookies
         # ----------------------------------------------------
 
         if cookie_file:
@@ -149,7 +154,9 @@ def download_youtube_audio(url: str) -> str:
         # Download
         # ----------------------------------------------------
 
-        print("Starting YouTube download...")
+        print(
+            "Starting YouTube download..."
+        )
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
@@ -162,7 +169,7 @@ def download_youtube_audio(url: str) -> str:
                 info
             )
 
-            # FFmpegExtractAudio creates WAV
+            # FFmpeg output
             wav_path = (
                 os.path.splitext(original_path)[0]
                 + ".wav"
@@ -171,8 +178,8 @@ def download_youtube_audio(url: str) -> str:
             if not os.path.exists(wav_path):
 
                 raise FileNotFoundError(
-                    "YouTube audio was downloaded, "
-                    "but WAV conversion failed."
+                    "Audio downloaded but WAV "
+                    "conversion failed."
                 )
 
             print(
@@ -191,10 +198,7 @@ def download_youtube_audio(url: str) -> str:
 
     finally:
 
-        # ----------------------------------------------------
         # Delete temporary cookie file
-        # ----------------------------------------------------
-
         if cookie_file:
 
             try:
@@ -209,9 +213,6 @@ def download_youtube_audio(url: str) -> str:
 # ============================================================
 
 def convert_to_wav(input_path: str) -> str:
-    """
-    Convert any audio/video file to mono 16 kHz WAV.
-    """
 
     output_path = (
         os.path.splitext(input_path)[0]
@@ -222,7 +223,6 @@ def convert_to_wav(input_path: str) -> str:
         input_path
     )
 
-    # Whisper-compatible audio
     audio = (
         audio
         .set_channels(1)
@@ -327,7 +327,9 @@ def process_input(source: str) -> list:
     # Chunk audio
     # --------------------------------------------------------
 
-    print("Chunking audio...")
+    print(
+        "Chunking audio..."
+    )
 
     chunks = chunk_audio(
         wav_path
