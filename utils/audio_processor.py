@@ -17,39 +17,93 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 # ============================================================
-# Check JavaScript Runtime
+# Check Deno
 # ============================================================
 
-def check_node():
+def check_deno():
     """
-    Check whether Node.js is available on the machine.
+    Check whether Deno is installed and available.
     """
 
-    node_path = shutil.which("node")
+    deno_path = shutil.which("deno")
 
-    if not node_path:
-        print("WARNING: Node.js was not found.")
+    if not deno_path:
+        print("WARNING: Deno was not found.")
         return False
 
     try:
         result = subprocess.run(
-            [node_path, "--version"],
+            [deno_path, "--version"],
             capture_output=True,
             text=True,
             timeout=10,
         )
 
-        print(
-            f"Node.js detected: {result.stdout.strip()}"
-        )
+        print("Deno path:", deno_path)
+        print("Deno version:")
+        print(result.stdout.strip())
 
         return True
 
     except Exception as e:
-        print(
-            f"Node.js check failed: {e}"
-        )
+        print(f"Deno check failed: {e}")
         return False
+
+
+# ============================================================
+# Check FFmpeg
+# ============================================================
+
+def check_ffmpeg():
+    """
+    Check whether FFmpeg is installed.
+    """
+
+    ffmpeg_path = shutil.which("ffmpeg")
+
+    if not ffmpeg_path:
+        print("WARNING: FFmpeg was not found.")
+        return False
+
+    try:
+        result = subprocess.run(
+            [ffmpeg_path, "-version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        first_line = result.stdout.splitlines()[0]
+
+        print("FFmpeg path:", ffmpeg_path)
+        print("FFmpeg:", first_line)
+
+        return True
+
+    except Exception as e:
+        print(f"FFmpeg check failed: {e}")
+        return False
+
+
+# ============================================================
+# Check yt-dlp
+# ============================================================
+
+def check_ytdlp():
+    """
+    Print installed yt-dlp version.
+    """
+
+    try:
+        print(
+            "yt-dlp version:",
+            yt_dlp.version.__version__
+        )
+
+    except Exception as e:
+        print(
+            f"Could not determine yt-dlp version: {e}"
+        )
 
 
 # ============================================================
@@ -61,7 +115,7 @@ def get_youtube_cookie_file():
     Read YouTube cookies from Streamlit Secrets
     and create a temporary Netscape cookie file.
 
-    Streamlit secrets format:
+    Streamlit secrets.toml:
 
     [youtube]
 
@@ -72,18 +126,24 @@ def get_youtube_cookie_file():
     """
 
     try:
+
         cookies = st.secrets["youtube"]["cookies"]
 
     except (KeyError, FileNotFoundError):
+
         print(
-            "No YouTube cookies found in Streamlit Secrets."
+            "No YouTube cookies found "
+            "in Streamlit Secrets."
         )
+
         return None
 
     if not cookies or not cookies.strip():
+
         print(
             "YouTube cookies are empty."
         )
+
         return None
 
     cookie_file = tempfile.NamedTemporaryFile(
@@ -110,8 +170,12 @@ def get_youtube_cookie_file():
     except Exception:
 
         try:
+
             cookie_file.close()
-            os.unlink(cookie_file.name)
+
+            os.unlink(
+                cookie_file.name
+            )
 
         except OSError:
             pass
@@ -123,15 +187,19 @@ def get_youtube_cookie_file():
 # Download YouTube Audio
 # ============================================================
 
-def download_youtube_audio(url: str) -> str:
-    """
-    Download YouTube audio and convert it to WAV.
+def download_youtube_audio(
+    url: str
+) -> str:
 
-    Requires:
+    """
+    Download YouTube audio and convert
+    it to WAV.
+
+    Uses:
 
         yt-dlp
+        Deno
         FFmpeg
-        Node.js
 
     Optional:
 
@@ -140,7 +208,7 @@ def download_youtube_audio(url: str) -> str:
 
     output_path = os.path.join(
         DOWNLOAD_DIR,
-        "%(id)s.%(ext)s",
+        "%(id)s.%(ext)s"
     )
 
     cookie_file = None
@@ -148,21 +216,31 @@ def download_youtube_audio(url: str) -> str:
     try:
 
         # ----------------------------------------------------
-        # Check Node.js
+        # Runtime checks
         # ----------------------------------------------------
 
-        node_available = check_node()
+        print(
+            "Checking dependencies..."
+        )
 
-        if not node_available:
+        check_ytdlp()
+
+        if not check_deno():
 
             raise RuntimeError(
-                "Node.js is not available on this "
-                "Streamlit Cloud machine. "
-                "Make sure packages.txt contains: nodejs"
+                "Deno is not installed or "
+                "not available in PATH."
+            )
+
+        if not check_ffmpeg():
+
+            raise RuntimeError(
+                "FFmpeg is not installed or "
+                "not available in PATH."
             )
 
         # ----------------------------------------------------
-        # Get cookies
+        # Cookies
         # ----------------------------------------------------
 
         cookie_file = (
@@ -170,7 +248,7 @@ def download_youtube_audio(url: str) -> str:
         )
 
         # ----------------------------------------------------
-        # yt-dlp configuration
+        # yt-dlp options
         # ----------------------------------------------------
 
         ydl_opts = {
@@ -178,10 +256,10 @@ def download_youtube_audio(url: str) -> str:
             # Best available audio
             "format": "bestaudio/best",
 
-            # Output filename
+            # Output
             "outtmpl": output_path,
 
-            # Don't download playlists
+            # Do not download playlists
             "noplaylist": True,
 
             # Logging
@@ -189,28 +267,30 @@ def download_youtube_audio(url: str) -> str:
             "no_warnings": False,
 
             # ------------------------------------------------
-            # JavaScript runtime
+            # Deno JavaScript runtime
             # ------------------------------------------------
             #
-            # Node.js comes from packages.txt
+            # Current yt-dlp supports Deno.
+            # Deno is also the recommended runtime.
             #
+
             "js_runtimes": {
-                "node": {}
+                "deno": {}
             },
 
             # ------------------------------------------------
-            # EJS remote component
+            # EJS scripts
             # ------------------------------------------------
             #
-            # IMPORTANT:
-            # This must be a LIST.
+            # Use GitHub as a fallback/source for EJS.
             #
+
             "remote_components": [
                 "ejs:github"
             ],
 
             # ------------------------------------------------
-            # Convert audio to WAV
+            # Convert to WAV
             # ------------------------------------------------
 
             "postprocessors": [
@@ -223,7 +303,7 @@ def download_youtube_audio(url: str) -> str:
         }
 
         # ----------------------------------------------------
-        # Add cookies
+        # Add cookies if available
         # ----------------------------------------------------
 
         if cookie_file:
@@ -233,7 +313,7 @@ def download_youtube_audio(url: str) -> str:
             )
 
         # ----------------------------------------------------
-        # Download
+        # Start download
         # ----------------------------------------------------
 
         print(
@@ -250,20 +330,18 @@ def download_youtube_audio(url: str) -> str:
 
             info = ydl.extract_info(
                 url,
-                download=True,
+                download=True
             )
 
             # ------------------------------------------------
-            # Get original filename
+            # Find downloaded file
             # ------------------------------------------------
 
             original_path = (
-                ydl.prepare_filename(info)
+                ydl.prepare_filename(
+                    info
+                )
             )
-
-            # ------------------------------------------------
-            # FFmpeg creates WAV
-            # ------------------------------------------------
 
             wav_path = (
                 os.path.splitext(
@@ -273,7 +351,7 @@ def download_youtube_audio(url: str) -> str:
             )
 
             # ------------------------------------------------
-            # Check WAV
+            # Verify WAV
             # ------------------------------------------------
 
             if not os.path.exists(
@@ -281,14 +359,17 @@ def download_youtube_audio(url: str) -> str:
             ):
 
                 raise FileNotFoundError(
-                    "YouTube download completed, "
+                    "YouTube download completed "
                     "but WAV file was not created.\n"
                     f"Expected: {wav_path}"
                 )
 
             print(
-                f"YouTube audio saved: "
-                f"{wav_path}"
+                "YouTube audio saved:"
+            )
+
+            print(
+                wav_path
             )
 
             return wav_path
@@ -296,7 +377,11 @@ def download_youtube_audio(url: str) -> str:
     except Exception as e:
 
         print(
-            f"YouTube download failed: {e}"
+            "YouTube download failed:"
+        )
+
+        print(
+            str(e)
         )
 
         raise
@@ -304,14 +389,19 @@ def download_youtube_audio(url: str) -> str:
     finally:
 
         # ----------------------------------------------------
-        # Delete temporary cookie file
+        # Delete temporary cookies
         # ----------------------------------------------------
 
         if cookie_file:
 
             try:
+
                 os.unlink(
                     cookie_file
+                )
+
+                print(
+                    "Temporary cookie file deleted."
                 )
 
             except OSError:
@@ -338,6 +428,10 @@ def convert_to_wav(
         + "_converted.wav"
     )
 
+    print(
+        "Converting local file to WAV..."
+    )
+
     audio = AudioSegment.from_file(
         input_path
     )
@@ -351,7 +445,11 @@ def convert_to_wav(
 
     audio.export(
         output_path,
-        format="wav",
+        format="wav"
+    )
+
+    print(
+        f"Converted file: {output_path}"
     )
 
     return output_path
@@ -363,8 +461,16 @@ def convert_to_wav(
 
 def chunk_audio(
     wav_path: str,
-    chunk_minutes: int = 10,
+    chunk_minutes: int = 10
 ) -> list:
+
+    """
+    Split WAV audio into chunks.
+
+    Default:
+
+        10 minutes per chunk.
+    """
 
     audio = AudioSegment.from_wav(
         wav_path
@@ -382,7 +488,7 @@ def chunk_audio(
         range(
             0,
             len(audio),
-            chunk_ms,
+            chunk_ms
         )
     ):
 
@@ -397,12 +503,16 @@ def chunk_audio(
 
         chunk.export(
             chunk_path,
-            format="wav",
+            format="wav"
         )
 
         chunks.append(
             chunk_path
         )
+
+    print(
+        f"Created {len(chunks)} audio chunk(s)."
+    )
 
     return chunks
 
@@ -415,17 +525,34 @@ def process_input(
     source: str
 ) -> list:
 
+    """
+    Process either:
+
+        1. YouTube URL
+        2. Local audio/video file
+
+    Then split the resulting WAV
+    into 10-minute chunks.
+    """
+
     # --------------------------------------------------------
     # YouTube URL
     # --------------------------------------------------------
 
     if (
-        source.startswith("http://")
-        or source.startswith("https://")
+        source.startswith(
+            "http://"
+        )
+        or source.startswith(
+            "https://"
+        )
     ):
 
         print(
-            "Detected YouTube URL. "
+            "Detected YouTube URL."
+        )
+
+        print(
             "Downloading audio..."
         )
 
@@ -442,7 +569,10 @@ def process_input(
     else:
 
         print(
-            "Detected local file. "
+            "Detected local file."
+        )
+
+        print(
             "Converting to WAV..."
         )
 
@@ -465,7 +595,10 @@ def process_input(
     )
 
     print(
-        f"Audio ready — "
+        "Audio processing complete."
+    )
+
+    print(
         f"{len(chunks)} chunk(s) created."
     )
 
