@@ -45,3 +45,4 @@ requests>=2.32.0
 
 langchain-chroma
 torchvision
+audioop-lts>=0.2.1
