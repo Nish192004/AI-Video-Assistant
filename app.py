@@ -9,11 +9,6 @@ from core.rag_engine import build_rag_chain, ask_question
 
 load_dotenv()
 
-# ─── Write YouTube cookies from Secrets to disk for yt-dlp ──────────────────────
-if "youtube" in st.secrets and "cookies" in st.secrets["youtube"]:
-    with open("youtube_cookies.txt", "w") as f:
-        f.write(st.secrets["youtube"]["cookies"])
-
 # ─── Page Config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AI Video Assistant",
