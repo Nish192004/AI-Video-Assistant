@@ -31,7 +31,7 @@ def ensure_deno():
     """
 
     # --------------------------------------------------------
-    # Check whether Deno already exists
+    # Check if Deno already exists
     # --------------------------------------------------------
 
     deno_path = shutil.which("deno")
@@ -62,36 +62,35 @@ def ensure_deno():
 
     deno_home = os.path.join(
         home,
-        ".deno"
+        ".deno",
     )
 
     deno_bin = os.path.join(
         deno_home,
-        "bin"
+        "bin",
     )
 
     deno_path = os.path.join(
         deno_bin,
-        "deno"
+        "deno",
     )
 
     os.makedirs(
         deno_bin,
-        exist_ok=True
+        exist_ok=True,
     )
 
     # --------------------------------------------------------
-    # Add Deno to PATH
+    # Add Deno directory to PATH
     # --------------------------------------------------------
 
     current_path = os.environ.get(
         "PATH",
-        ""
+        "",
     )
 
-    if deno_bin not in current_path.split(
-        os.pathsep
-    ):
+    if deno_bin not in current_path.split(os.pathsep):
+
         os.environ["PATH"] = (
             deno_bin
             + os.pathsep
@@ -102,11 +101,10 @@ def ensure_deno():
     # Check again
     # --------------------------------------------------------
 
-    deno_path_from_path = shutil.which(
-        "deno"
-    )
+    deno_path_from_path = shutil.which("deno")
 
     if deno_path_from_path:
+
         print(
             f"Deno found after PATH update: "
             f"{deno_path_from_path}"
@@ -118,13 +116,8 @@ def ensure_deno():
     # Download Deno
     # --------------------------------------------------------
 
-    print(
-        "Deno not found."
-    )
-
-    print(
-        "Installing Deno..."
-    )
+    print("Deno not found.")
+    print("Installing Deno...")
 
     deno_zip_url = (
         "https://github.com/denoland/deno/"
@@ -134,7 +127,7 @@ def ensure_deno():
 
     zip_path = os.path.join(
         home,
-        "deno.zip"
+        "deno.zip",
     )
 
     try:
@@ -146,7 +139,7 @@ def ensure_deno():
 
         urllib.request.urlretrieve(
             deno_zip_url,
-            zip_path
+            zip_path,
         )
 
         print(
@@ -159,11 +152,11 @@ def ensure_deno():
 
         with zipfile.ZipFile(
             zip_path,
-            "r"
+            "r",
         ) as zip_file:
 
             zip_file.extractall(
-                deno_bin
+                deno_bin,
             )
 
         # ----------------------------------------------------
@@ -176,12 +169,11 @@ def ensure_deno():
             pass
 
         # ----------------------------------------------------
-        # Make executable
+        # Check executable
         # ----------------------------------------------------
 
-        if not os.path.exists(
-            deno_path
-        ):
+        if not os.path.exists(deno_path):
+
             raise RuntimeError(
                 "Deno executable was not found "
                 "after extraction."
@@ -189,7 +181,7 @@ def ensure_deno():
 
         os.chmod(
             deno_path,
-            0o755
+            0o755,
         )
 
         # ----------------------------------------------------
@@ -201,7 +193,7 @@ def ensure_deno():
             + os.pathsep
             + os.environ.get(
                 "PATH",
-                ""
+                "",
             )
         )
 
@@ -212,7 +204,7 @@ def ensure_deno():
         result = subprocess.run(
             [
                 deno_path,
-                "--version"
+                "--version",
             ],
             capture_output=True,
             text=True,
@@ -220,6 +212,7 @@ def ensure_deno():
         )
 
         if result.returncode != 0:
+
             raise RuntimeError(
                 "Deno was installed but "
                 "could not be executed.\n"
@@ -241,8 +234,6 @@ def ensure_deno():
         print(
             f"Deno installation failed: {e}"
         )
-
-        # Clean up failed download
 
         try:
             if os.path.exists(zip_path):
@@ -268,15 +259,13 @@ DENO_PATH = ensure_deno()
 # ============================================================
 
 def check_ffmpeg():
-    """
-    Check FFmpeg availability.
-    """
 
     ffmpeg_path = shutil.which(
         "ffmpeg"
     )
 
     if not ffmpeg_path:
+
         raise RuntimeError(
             "FFmpeg is not installed "
             "or not available in PATH."
@@ -294,9 +283,6 @@ def check_ffmpeg():
 # ============================================================
 
 def check_ytdlp():
-    """
-    Print yt-dlp version.
-    """
 
     try:
 
@@ -325,13 +311,13 @@ def check_ytdlp():
 # ============================================================
 
 def get_youtube_cookie_file():
+
     """
     Read YouTube cookies from Streamlit Secrets.
 
-    Expected:
+    Expected secrets.toml:
 
     [youtube]
-
     cookies = '''
     # Netscape HTTP Cookie File
     ...
@@ -350,7 +336,7 @@ def get_youtube_cookie_file():
 
     except (
         KeyError,
-        FileNotFoundError
+        FileNotFoundError,
     ):
 
         print(
@@ -367,6 +353,26 @@ def get_youtube_cookie_file():
         )
 
         return None
+
+    # --------------------------------------------------------
+    # Basic validation
+    # --------------------------------------------------------
+
+    cookies = cookies.strip()
+
+    if "YOUR_" in cookies:
+        raise RuntimeError(
+            "Your Streamlit YouTube cookies "
+            "still contain placeholder values. "
+            "Export fresh cookies."
+        )
+
+    if "EXPIRY" in cookies:
+        raise RuntimeError(
+            "Your Streamlit YouTube cookie file "
+            "contains the placeholder EXPIRY. "
+            "Use the real numeric cookie expiry."
+        )
 
     cookie_file = tempfile.NamedTemporaryFile(
         mode="w",
@@ -406,17 +412,63 @@ def get_youtube_cookie_file():
 
 
 # ============================================================
-# Download YouTube Audio
+# BGUTIL Check
+# ============================================================
+
+def get_bgutil_server_home():
+
+    """
+    Locate the bgutil script provider directory.
+
+    The pip package normally installs the provider
+    under ~/bgutil-ytdlp-pot-provider/server.
+    """
+
+    home = os.path.expanduser("~")
+
+    possible_paths = [
+
+        os.path.join(
+            home,
+            "bgutil-ytdlp-pot-provider",
+            "server",
+        ),
+
+        os.path.join(
+            home,
+            ".local",
+            "share",
+            "bgutil-ytdlp-pot-provider",
+            "server",
+        ),
+
+    ]
+
+    for path in possible_paths:
+
+        if os.path.isdir(path):
+
+            print(
+                f"bgutil server found: {path}"
+            )
+
+            return path
+
+    print(
+        "bgutil script server directory "
+        "was not found."
+    )
+
+    return None
+
+
+# ============================================================
+# YouTube Audio Download
 # ============================================================
 
 def download_youtube_audio(
-    url: str
+    url: str,
 ) -> str:
-
-    """
-    Download YouTube audio and convert
-    it to WAV.
-    """
 
     print(
         "================================"
@@ -435,7 +487,7 @@ def download_youtube_audio(
     )
 
     # --------------------------------------------------------
-    # Check dependencies
+    # Dependency checks
     # --------------------------------------------------------
 
     check_ytdlp()
@@ -447,12 +499,20 @@ def download_youtube_audio(
     )
 
     # --------------------------------------------------------
+    # BGUTIL
+    # --------------------------------------------------------
+
+    bgutil_server_home = (
+        get_bgutil_server_home()
+    )
+
+    # --------------------------------------------------------
     # Output
     # --------------------------------------------------------
 
     output_path = os.path.join(
         DOWNLOAD_DIR,
-        "%(id)s.%(ext)s"
+        "%(id)s.%(ext)s",
     )
 
     cookie_file = None
@@ -468,22 +528,23 @@ def download_youtube_audio(
         )
 
         # ----------------------------------------------------
-        # yt-dlp configuration
+        # yt-dlp options
         # ----------------------------------------------------
 
         ydl_opts = {
 
-            # Best audio
+            # Best available audio
             "format": "bestaudio/best",
 
-            # Output
+            # Output filename
             "outtmpl": output_path,
 
-            # No playlists
+            # Don't download playlists
             "noplaylist": True,
 
             # Logs
             "quiet": False,
+
             "no_warnings": False,
 
             # ------------------------------------------------
@@ -492,20 +553,20 @@ def download_youtube_audio(
 
             "js_runtimes": {
                 "deno": {
-                    "path": DENO_PATH
-                }
+                    "path": DENO_PATH,
+                },
             },
 
             # ------------------------------------------------
-            # EJS
+            # EJS remote component
             # ------------------------------------------------
 
             "remote_components": [
-                "ejs:github"
+                "ejs:github",
             ],
 
             # ------------------------------------------------
-            # Convert to WAV
+            # Audio conversion
             # ------------------------------------------------
 
             "postprocessors": [
@@ -513,12 +574,12 @@ def download_youtube_audio(
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "wav",
                     "preferredquality": "192",
-                }
+                },
             ],
         }
 
         # ----------------------------------------------------
-        # Cookies
+        # Add cookies
         # ----------------------------------------------------
 
         if cookie_file:
@@ -528,8 +589,40 @@ def download_youtube_audio(
             ] = cookie_file
 
         # ----------------------------------------------------
+        # Configure bgutil SCRIPT provider
+        # ----------------------------------------------------
+
+        if bgutil_server_home:
+
+            ydl_opts[
+                "extractor_args"
+            ] = {
+
+                "youtubepot-bgutilscript": {
+
+                    "server_home":
+                        bgutil_server_home,
+                },
+            }
+
+            print(
+                "bgutil script provider enabled."
+            )
+
+        else:
+
+            print(
+                "WARNING: bgutil script provider "
+                "directory was not found."
+            )
+
+        # ----------------------------------------------------
         # Download
         # ----------------------------------------------------
+
+        print(
+            "Running yt-dlp..."
+        )
 
         with yt_dlp.YoutubeDL(
             ydl_opts
@@ -537,7 +630,7 @@ def download_youtube_audio(
 
             info = ydl.extract_info(
                 url,
-                download=True
+                download=True,
             )
 
             original_path = (
@@ -547,33 +640,30 @@ def download_youtube_audio(
             )
 
         # ----------------------------------------------------
-        # Expected WAV
+        # Find generated WAV
         # ----------------------------------------------------
 
-        wav_path = (
+        expected_wav = (
             os.path.splitext(
                 original_path
             )[0]
             + ".wav"
         )
 
-        # ----------------------------------------------------
-        # Verify
-        # ----------------------------------------------------
-
-        if not os.path.exists(
-            wav_path
+        if os.path.exists(
+            expected_wav
         ):
 
-            # Sometimes yt-dlp may produce
-            # a slightly different extension.
-            # Search the downloads directory.
+            wav_path = expected_wav
 
+        else:
+
+            # Search by video ID
             video_id = info.get(
                 "id"
             )
 
-            possible_files = []
+            wav_path = None
 
             if video_id:
 
@@ -581,34 +671,31 @@ def download_youtube_audio(
                     DOWNLOAD_DIR
                 ):
 
-                    if video_id in filename:
+                    if (
+                        video_id in filename
+                        and filename.lower().endswith(
+                            ".wav"
+                        )
+                    ):
 
-                        possible_files.append(
-                            os.path.join(
-                                DOWNLOAD_DIR,
-                                filename
-                            )
+                        wav_path = os.path.join(
+                            DOWNLOAD_DIR,
+                            filename,
                         )
 
-            wav_files = [
-                f
-                for f in possible_files
-                if f.lower().endswith(
-                    ".wav"
-                )
-            ]
+                        break
 
-            if wav_files:
-
-                wav_path = wav_files[0]
-
-            else:
+            if not wav_path:
 
                 raise FileNotFoundError(
-                    "YouTube download completed "
+                    "YouTube audio downloaded "
                     "but WAV file was not found.\n"
-                    f"Expected: {wav_path}"
+                    f"Expected: {expected_wav}"
                 )
+
+        # ----------------------------------------------------
+        # Success
+        # ----------------------------------------------------
 
         print(
             "================================"
@@ -651,7 +738,7 @@ def download_youtube_audio(
     finally:
 
         # ----------------------------------------------------
-        # Delete temporary cookies
+        # Remove temporary cookie file
         # ----------------------------------------------------
 
         if cookie_file:
@@ -671,11 +758,11 @@ def download_youtube_audio(
 
 
 # ============================================================
-# Convert Local Audio / Video
+# Local Audio / Video → WAV
 # ============================================================
 
 def convert_to_wav(
-    input_path: str
+    input_path: str,
 ) -> str:
 
     """
@@ -706,7 +793,7 @@ def convert_to_wav(
 
     audio.export(
         output_path,
-        format="wav"
+        format="wav",
     )
 
     print(
@@ -722,7 +809,7 @@ def convert_to_wav(
 
 def chunk_audio(
     wav_path: str,
-    chunk_minutes: int = 10
+    chunk_minutes: int = 10,
 ) -> list:
 
     """
@@ -745,7 +832,7 @@ def chunk_audio(
         range(
             0,
             len(audio),
-            chunk_ms
+            chunk_ms,
         )
     ):
 
@@ -760,7 +847,7 @@ def chunk_audio(
 
         chunk.export(
             chunk_path,
-            format="wav"
+            format="wav",
         )
 
         chunks.append(
@@ -779,7 +866,7 @@ def chunk_audio(
 # ============================================================
 
 def process_input(
-    source: str
+    source: str,
 ) -> list:
 
     """
@@ -787,13 +874,19 @@ def process_input(
     convert to WAV and split into chunks.
     """
 
+    source = source.strip()
+
     # --------------------------------------------------------
-    # URL
+    # YouTube URL
     # --------------------------------------------------------
 
     if (
-        source.startswith("http://")
-        or source.startswith("https://")
+        source.startswith(
+            "http://"
+        )
+        or source.startswith(
+            "https://"
+        )
     ):
 
         print(
