@@ -23,7 +23,7 @@ def get_youtube_cookie_file():
     Read YouTube cookies from Streamlit Secrets and create
     a temporary Netscape-format cookie file.
 
-    Expected Streamlit Secrets:
+    Streamlit Secrets:
 
     [youtube]
     cookies = '''
@@ -55,6 +55,7 @@ def get_youtube_cookie_file():
         return cookie_file.name
 
     except Exception:
+
         try:
             cookie_file.close()
             os.unlink(cookie_file.name)
@@ -75,15 +76,15 @@ def download_youtube_audio(url: str) -> str:
     Requirements:
         - yt-dlp[default]
         - FFmpeg
-        - Deno 2.3+ recommended for current yt-dlp YouTube support
+        - Deno
 
     Optional:
-        - YouTube cookies in Streamlit Secrets
+        - YouTube cookies from Streamlit Secrets
 
-    Important:
-        Cookies do NOT guarantee that every YouTube video
-        will download. Some YouTube clients/formats currently
-        require PO Tokens.
+    Note:
+        Some YouTube formats may require PO Tokens.
+        bgutil-ytdlp-pot-provider should handle this
+        when correctly configured.
     """
 
     output_path = os.path.join(
@@ -96,7 +97,7 @@ def download_youtube_audio(url: str) -> str:
     try:
 
         # ----------------------------------------------------
-        # Get cookies from Streamlit Secrets
+        # Get YouTube cookies
         # ----------------------------------------------------
 
         cookie_file = get_youtube_cookie_file()
@@ -112,7 +113,7 @@ def download_youtube_audio(url: str) -> str:
             # Output filename
             "outtmpl": output_path,
 
-            # Convert to WAV
+            # Convert audio to WAV
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
@@ -121,32 +122,24 @@ def download_youtube_audio(url: str) -> str:
                 }
             ],
 
-            # Only one video
+            # Don't download playlists
             "noplaylist": True,
 
-            # Debug logging
-            # Change quiet=True after everything works
+            # Debug logs during deployment
             "quiet": False,
             "no_warnings": False,
 
             # ------------------------------------------------
             # JavaScript challenge solving
             # ------------------------------------------------
-            #
-            # Deno is the recommended runtime.
-            #
+
             "js_runtimes": {
                 "deno": {}
-            },
-
-            # Allow yt-dlp to obtain/update EJS scripts
-            "remote_components": {
-                "ejs": "github"
             },
         }
 
         # ----------------------------------------------------
-        # Add cookies only if available
+        # Add cookies only when available
         # ----------------------------------------------------
 
         if cookie_file:
@@ -169,7 +162,7 @@ def download_youtube_audio(url: str) -> str:
                 info
             )
 
-            # FFmpegExtractAudio changes the extension
+            # FFmpegExtractAudio creates WAV
             wav_path = (
                 os.path.splitext(original_path)[0]
                 + ".wav"
@@ -178,8 +171,8 @@ def download_youtube_audio(url: str) -> str:
             if not os.path.exists(wav_path):
 
                 raise FileNotFoundError(
-                    "YouTube download completed but "
-                    "the WAV file was not created."
+                    "YouTube audio was downloaded, "
+                    "but WAV conversion failed."
                 )
 
             print(
@@ -217,8 +210,7 @@ def download_youtube_audio(url: str) -> str:
 
 def convert_to_wav(input_path: str) -> str:
     """
-    Convert any audio/video file to
-    mono 16 kHz WAV.
+    Convert any audio/video file to mono 16 kHz WAV.
     """
 
     output_path = (
@@ -230,7 +222,7 @@ def convert_to_wav(input_path: str) -> str:
         input_path
     )
 
-    # Whisper-friendly format
+    # Whisper-compatible audio
     audio = (
         audio
         .set_channels(1)
@@ -299,7 +291,7 @@ def chunk_audio(
 def process_input(source: str) -> list:
 
     # --------------------------------------------------------
-    # YouTube / HTTP URL
+    # YouTube URL
     # --------------------------------------------------------
 
     if (
