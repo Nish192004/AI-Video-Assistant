@@ -3,9 +3,9 @@ from pydub import AudioSegment
 import os
 
 DOWNLOAD_DIR = 'downloades'
-os.makedirs(DOWNLOAD_DIR,exist_ok = True)
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-def download_youtube_audio(url :str) ->str:
+def download_youtube_audio(url: str) -> str:
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
     ydl_opts = {
         "format": "bestaudio/best",
@@ -20,7 +20,7 @@ def download_youtube_audio(url :str) ->str:
         "quiet": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["tv", "web_safari", "web"],
+                "player_client": ["tv", "mweb"],
             }
         },
         "cookiefile": "youtube_cookies.txt",
@@ -42,16 +42,16 @@ def convert_to_wav(input_path: str) -> str:
 
 
 
-def chunk_audio(wav_path : str , chunk_minutes : int = 10) -> list:
+def chunk_audio(wav_path: str, chunk_minutes: int = 10) -> list:
     audio = AudioSegment.from_wav(wav_path)
     chunk_ms = chunk_minutes * 60 * 1000 
 
     chunks = []
 
-    for i, start in enumerate(range(0,len(audio),chunk_ms)):
+    for i, start in enumerate(range(0, len(audio), chunk_ms)):
         chunk = audio[start : start + chunk_ms]
         chunk_path = f"{wav_path}_chunk_{i}.wav"
-        chunk.export(chunk_path , format = "wav")
+        chunk.export(chunk_path, format="wav")
 
         chunks.append(chunk_path)
     
