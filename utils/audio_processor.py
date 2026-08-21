@@ -2,6 +2,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+import urllib.request
+import zipfile
 
 import streamlit as st
 import yt_dlp
@@ -17,105 +19,316 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 # ============================================================
-# Check Deno
+# Deno Installation
 # ============================================================
 
-def check_deno():
+def ensure_deno():
     """
-    Check whether Deno is installed and available.
+    Find Deno or install it locally.
+
+    Streamlit Cloud may not provide Deno through apt,
+    so this installs Deno into ~/.deno/bin when necessary.
     """
+
+    # --------------------------------------------------------
+    # Check whether Deno already exists
+    # --------------------------------------------------------
 
     deno_path = shutil.which("deno")
 
-    if not deno_path:
-        print("WARNING: Deno was not found.")
-        return False
+    if deno_path:
+        print(f"Deno found: {deno_path}")
 
-    try:
-        result = subprocess.run(
-            [deno_path, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
+        try:
+            result = subprocess.run(
+                [deno_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+
+            print(result.stdout.strip())
+
+        except Exception as e:
+            print(f"Deno version check failed: {e}")
+
+        return deno_path
+
+    # --------------------------------------------------------
+    # Installation directory
+    # --------------------------------------------------------
+
+    home = os.path.expanduser("~")
+
+    deno_home = os.path.join(
+        home,
+        ".deno"
+    )
+
+    deno_bin = os.path.join(
+        deno_home,
+        "bin"
+    )
+
+    deno_path = os.path.join(
+        deno_bin,
+        "deno"
+    )
+
+    os.makedirs(
+        deno_bin,
+        exist_ok=True
+    )
+
+    # --------------------------------------------------------
+    # Add Deno to PATH
+    # --------------------------------------------------------
+
+    current_path = os.environ.get(
+        "PATH",
+        ""
+    )
+
+    if deno_bin not in current_path.split(
+        os.pathsep
+    ):
+        os.environ["PATH"] = (
+            deno_bin
+            + os.pathsep
+            + current_path
         )
 
-        print("Deno path:", deno_path)
-        print("Deno version:")
-        print(result.stdout.strip())
+    # --------------------------------------------------------
+    # Check again
+    # --------------------------------------------------------
 
-        return True
+    deno_path_from_path = shutil.which(
+        "deno"
+    )
+
+    if deno_path_from_path:
+        print(
+            f"Deno found after PATH update: "
+            f"{deno_path_from_path}"
+        )
+
+        return deno_path_from_path
+
+    # --------------------------------------------------------
+    # Download Deno
+    # --------------------------------------------------------
+
+    print(
+        "Deno not found."
+    )
+
+    print(
+        "Installing Deno..."
+    )
+
+    deno_zip_url = (
+        "https://github.com/denoland/deno/"
+        "releases/latest/download/"
+        "deno-x86_64-unknown-linux-gnu.zip"
+    )
+
+    zip_path = os.path.join(
+        home,
+        "deno.zip"
+    )
+
+    try:
+
+        print(
+            f"Downloading Deno from:\n"
+            f"{deno_zip_url}"
+        )
+
+        urllib.request.urlretrieve(
+            deno_zip_url,
+            zip_path
+        )
+
+        print(
+            "Deno archive downloaded."
+        )
+
+        # ----------------------------------------------------
+        # Extract
+        # ----------------------------------------------------
+
+        with zipfile.ZipFile(
+            zip_path,
+            "r"
+        ) as zip_file:
+
+            zip_file.extractall(
+                deno_bin
+            )
+
+        # ----------------------------------------------------
+        # Remove ZIP
+        # ----------------------------------------------------
+
+        try:
+            os.remove(zip_path)
+        except OSError:
+            pass
+
+        # ----------------------------------------------------
+        # Make executable
+        # ----------------------------------------------------
+
+        if not os.path.exists(
+            deno_path
+        ):
+            raise RuntimeError(
+                "Deno executable was not found "
+                "after extraction."
+            )
+
+        os.chmod(
+            deno_path,
+            0o755
+        )
+
+        # ----------------------------------------------------
+        # Update PATH
+        # ----------------------------------------------------
+
+        os.environ["PATH"] = (
+            deno_bin
+            + os.pathsep
+            + os.environ.get(
+                "PATH",
+                ""
+            )
+        )
+
+        # ----------------------------------------------------
+        # Verify
+        # ----------------------------------------------------
+
+        result = subprocess.run(
+            [
+                deno_path,
+                "--version"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Deno was installed but "
+                "could not be executed.\n"
+                f"{result.stderr}"
+            )
+
+        print(
+            "Deno installed successfully."
+        )
+
+        print(
+            result.stdout.strip()
+        )
+
+        return deno_path
 
     except Exception as e:
-        print(f"Deno check failed: {e}")
-        return False
+
+        print(
+            f"Deno installation failed: {e}"
+        )
+
+        # Clean up failed download
+
+        try:
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+        except OSError:
+            pass
+
+        raise RuntimeError(
+            "Could not install Deno. "
+            f"Reason: {e}"
+        ) from e
 
 
 # ============================================================
-# Check FFmpeg
+# Initialize Deno
+# ============================================================
+
+DENO_PATH = ensure_deno()
+
+
+# ============================================================
+# FFmpeg Check
 # ============================================================
 
 def check_ffmpeg():
     """
-    Check whether FFmpeg is installed.
+    Check FFmpeg availability.
     """
 
-    ffmpeg_path = shutil.which("ffmpeg")
+    ffmpeg_path = shutil.which(
+        "ffmpeg"
+    )
 
     if not ffmpeg_path:
-        print("WARNING: FFmpeg was not found.")
-        return False
-
-    try:
-        result = subprocess.run(
-            [ffmpeg_path, "-version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
+        raise RuntimeError(
+            "FFmpeg is not installed "
+            "or not available in PATH."
         )
 
-        first_line = result.stdout.splitlines()[0]
+    print(
+        f"FFmpeg found: {ffmpeg_path}"
+    )
 
-        print("FFmpeg path:", ffmpeg_path)
-        print("FFmpeg:", first_line)
-
-        return True
-
-    except Exception as e:
-        print(f"FFmpeg check failed: {e}")
-        return False
+    return ffmpeg_path
 
 
 # ============================================================
-# Check yt-dlp
+# yt-dlp Check
 # ============================================================
 
 def check_ytdlp():
     """
-    Print installed yt-dlp version.
+    Print yt-dlp version.
     """
 
     try:
-        print(
-            "yt-dlp version:",
+
+        version = (
             yt_dlp.version.__version__
         )
 
-    except Exception as e:
         print(
-            f"Could not determine yt-dlp version: {e}"
+            f"yt-dlp version: {version}"
         )
+
+        return version
+
+    except Exception as e:
+
+        print(
+            f"Could not determine "
+            f"yt-dlp version: {e}"
+        )
+
+        return None
 
 
 # ============================================================
-# Get YouTube Cookies from Streamlit Secrets
+# YouTube Cookies
 # ============================================================
 
 def get_youtube_cookie_file():
     """
-    Read YouTube cookies from Streamlit Secrets
-    and create a temporary Netscape cookie file.
+    Read YouTube cookies from Streamlit Secrets.
 
-    Streamlit secrets.toml:
+    Expected:
 
     [youtube]
 
@@ -127,13 +340,22 @@ def get_youtube_cookie_file():
 
     try:
 
-        cookies = st.secrets["youtube"]["cookies"]
+        cookies = (
+            st.secrets[
+                "youtube"
+            ][
+                "cookies"
+            ]
+        )
 
-    except (KeyError, FileNotFoundError):
+    except (
+        KeyError,
+        FileNotFoundError
+    ):
 
         print(
-            "No YouTube cookies found "
-            "in Streamlit Secrets."
+            "YouTube cookies were not "
+            "found in Streamlit Secrets."
         )
 
         return None
@@ -194,17 +416,39 @@ def download_youtube_audio(
     """
     Download YouTube audio and convert
     it to WAV.
-
-    Uses:
-
-        yt-dlp
-        Deno
-        FFmpeg
-
-    Optional:
-
-        YouTube cookies from Streamlit Secrets
     """
+
+    print(
+        "================================"
+    )
+
+    print(
+        "Starting YouTube download..."
+    )
+
+    print(
+        f"URL: {url}"
+    )
+
+    print(
+        "================================"
+    )
+
+    # --------------------------------------------------------
+    # Check dependencies
+    # --------------------------------------------------------
+
+    check_ytdlp()
+
+    check_ffmpeg()
+
+    print(
+        f"Deno executable: {DENO_PATH}"
+    )
+
+    # --------------------------------------------------------
+    # Output
+    # --------------------------------------------------------
 
     output_path = os.path.join(
         DOWNLOAD_DIR,
@@ -216,30 +460,6 @@ def download_youtube_audio(
     try:
 
         # ----------------------------------------------------
-        # Runtime checks
-        # ----------------------------------------------------
-
-        print(
-            "Checking dependencies..."
-        )
-
-        check_ytdlp()
-
-        if not check_deno():
-
-            raise RuntimeError(
-                "Deno is not installed or "
-                "not available in PATH."
-            )
-
-        if not check_ffmpeg():
-
-            raise RuntimeError(
-                "FFmpeg is not installed or "
-                "not available in PATH."
-            )
-
-        # ----------------------------------------------------
         # Cookies
         # ----------------------------------------------------
 
@@ -248,42 +468,37 @@ def download_youtube_audio(
         )
 
         # ----------------------------------------------------
-        # yt-dlp options
+        # yt-dlp configuration
         # ----------------------------------------------------
 
         ydl_opts = {
 
-            # Best available audio
+            # Best audio
             "format": "bestaudio/best",
 
             # Output
             "outtmpl": output_path,
 
-            # Do not download playlists
+            # No playlists
             "noplaylist": True,
 
-            # Logging
+            # Logs
             "quiet": False,
             "no_warnings": False,
 
             # ------------------------------------------------
-            # Deno JavaScript runtime
+            # Deno
             # ------------------------------------------------
-            #
-            # Current yt-dlp supports Deno.
-            # Deno is also the recommended runtime.
-            #
 
             "js_runtimes": {
-                "deno": {}
+                "deno": {
+                    "path": DENO_PATH
+                }
             },
 
             # ------------------------------------------------
-            # EJS scripts
+            # EJS
             # ------------------------------------------------
-            #
-            # Use GitHub as a fallback/source for EJS.
-            #
 
             "remote_components": [
                 "ejs:github"
@@ -303,26 +518,18 @@ def download_youtube_audio(
         }
 
         # ----------------------------------------------------
-        # Add cookies if available
+        # Cookies
         # ----------------------------------------------------
 
         if cookie_file:
 
-            ydl_opts["cookiefile"] = (
-                cookie_file
-            )
+            ydl_opts[
+                "cookiefile"
+            ] = cookie_file
 
         # ----------------------------------------------------
-        # Start download
+        # Download
         # ----------------------------------------------------
-
-        print(
-            "Starting YouTube download..."
-        )
-
-        print(
-            f"URL: {url}"
-        )
 
         with yt_dlp.YoutubeDL(
             ydl_opts
@@ -333,48 +540,99 @@ def download_youtube_audio(
                 download=True
             )
 
-            # ------------------------------------------------
-            # Find downloaded file
-            # ------------------------------------------------
-
             original_path = (
                 ydl.prepare_filename(
                     info
                 )
             )
 
-            wav_path = (
-                os.path.splitext(
-                    original_path
-                )[0]
-                + ".wav"
+        # ----------------------------------------------------
+        # Expected WAV
+        # ----------------------------------------------------
+
+        wav_path = (
+            os.path.splitext(
+                original_path
+            )[0]
+            + ".wav"
+        )
+
+        # ----------------------------------------------------
+        # Verify
+        # ----------------------------------------------------
+
+        if not os.path.exists(
+            wav_path
+        ):
+
+            # Sometimes yt-dlp may produce
+            # a slightly different extension.
+            # Search the downloads directory.
+
+            video_id = info.get(
+                "id"
             )
 
-            # ------------------------------------------------
-            # Verify WAV
-            # ------------------------------------------------
+            possible_files = []
 
-            if not os.path.exists(
-                wav_path
-            ):
+            if video_id:
+
+                for filename in os.listdir(
+                    DOWNLOAD_DIR
+                ):
+
+                    if video_id in filename:
+
+                        possible_files.append(
+                            os.path.join(
+                                DOWNLOAD_DIR,
+                                filename
+                            )
+                        )
+
+            wav_files = [
+                f
+                for f in possible_files
+                if f.lower().endswith(
+                    ".wav"
+                )
+            ]
+
+            if wav_files:
+
+                wav_path = wav_files[0]
+
+            else:
 
                 raise FileNotFoundError(
                     "YouTube download completed "
-                    "but WAV file was not created.\n"
+                    "but WAV file was not found.\n"
                     f"Expected: {wav_path}"
                 )
 
-            print(
-                "YouTube audio saved:"
-            )
+        print(
+            "================================"
+        )
 
-            print(
-                wav_path
-            )
+        print(
+            "YouTube download successful!"
+        )
 
-            return wav_path
+        print(
+            f"WAV file: {wav_path}"
+        )
+
+        print(
+            "================================"
+        )
+
+        return wav_path
 
     except Exception as e:
+
+        print(
+            "================================"
+        )
 
         print(
             "YouTube download failed:"
@@ -382,6 +640,10 @@ def download_youtube_audio(
 
         print(
             str(e)
+        )
+
+        print(
+            "================================"
         )
 
         raise
@@ -409,7 +671,7 @@ def download_youtube_audio(
 
 
 # ============================================================
-# Convert Local Audio / Video to WAV
+# Convert Local Audio / Video
 # ============================================================
 
 def convert_to_wav(
@@ -417,7 +679,7 @@ def convert_to_wav(
 ) -> str:
 
     """
-    Convert any audio/video file to
+    Convert local audio/video to
     mono 16 kHz WAV.
     """
 
@@ -436,7 +698,6 @@ def convert_to_wav(
         input_path
     )
 
-    # Whisper-friendly format
     audio = (
         audio
         .set_channels(1)
@@ -456,7 +717,7 @@ def convert_to_wav(
 
 
 # ============================================================
-# Split Audio into Chunks
+# Audio Chunking
 # ============================================================
 
 def chunk_audio(
@@ -465,11 +726,7 @@ def chunk_audio(
 ) -> list:
 
     """
-    Split WAV audio into chunks.
-
-    Default:
-
-        10 minutes per chunk.
+    Split WAV into chunks.
     """
 
     audio = AudioSegment.from_wav(
@@ -511,7 +768,7 @@ def chunk_audio(
         )
 
     print(
-        f"Created {len(chunks)} audio chunk(s)."
+        f"Created {len(chunks)} chunk(s)."
     )
 
     return chunks
@@ -526,34 +783,21 @@ def process_input(
 ) -> list:
 
     """
-    Process either:
-
-        1. YouTube URL
-        2. Local audio/video file
-
-    Then split the resulting WAV
-    into 10-minute chunks.
+    Process YouTube URL or local file,
+    convert to WAV and split into chunks.
     """
 
     # --------------------------------------------------------
-    # YouTube URL
+    # URL
     # --------------------------------------------------------
 
     if (
-        source.startswith(
-            "http://"
-        )
-        or source.startswith(
-            "https://"
-        )
+        source.startswith("http://")
+        or source.startswith("https://")
     ):
 
         print(
             "Detected YouTube URL."
-        )
-
-        print(
-            "Downloading audio..."
         )
 
         wav_path = (
@@ -572,10 +816,6 @@ def process_input(
             "Detected local file."
         )
 
-        print(
-            "Converting to WAV..."
-        )
-
         wav_path = (
             convert_to_wav(
                 source
@@ -583,7 +823,7 @@ def process_input(
         )
 
     # --------------------------------------------------------
-    # Chunk audio
+    # Chunk
     # --------------------------------------------------------
 
     print(
@@ -595,10 +835,7 @@ def process_input(
     )
 
     print(
-        "Audio processing complete."
-    )
-
-    print(
+        f"Audio ready - "
         f"{len(chunks)} chunk(s) created."
     )
 
