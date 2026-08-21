@@ -15,21 +15,13 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 # ============================================================
-# YouTube Cookies from Streamlit Secrets
+# Get YouTube Cookies from Streamlit Secrets
 # ============================================================
 
 def get_youtube_cookie_file():
     """
     Read YouTube cookies from Streamlit Secrets and create
-    a temporary Netscape-format cookie file.
-
-    Expected Streamlit Secrets:
-
-    [youtube]
-    cookies = '''
-    # Netscape HTTP Cookie File
-    ...
-    '''
+    a temporary Netscape cookie file.
     """
 
     try:
@@ -55,7 +47,6 @@ def get_youtube_cookie_file():
         return cookie_file.name
 
     except Exception:
-
         try:
             cookie_file.close()
             os.unlink(cookie_file.name)
@@ -66,21 +57,10 @@ def get_youtube_cookie_file():
 
 
 # ============================================================
-# YouTube Audio Downloader
+# Download YouTube Audio
 # ============================================================
 
 def download_youtube_audio(url: str) -> str:
-    """
-    Download YouTube audio and convert it to WAV.
-
-    Requirements:
-        - yt-dlp[default]
-        - FFmpeg
-        - Node.js
-
-    Optional:
-        - YouTube cookies from Streamlit Secrets
-    """
 
     output_path = os.path.join(
         DOWNLOAD_DIR,
@@ -92,7 +72,7 @@ def download_youtube_audio(url: str) -> str:
     try:
 
         # ----------------------------------------------------
-        # Get cookies from Streamlit Secrets
+        # Get cookies
         # ----------------------------------------------------
 
         cookie_file = get_youtube_cookie_file()
@@ -103,16 +83,16 @@ def download_youtube_audio(url: str) -> str:
 
         ydl_opts = {
 
-            # Best available audio
+            # Best audio
             "format": "bestaudio/best",
 
-            # Output filename
+            # Output
             "outtmpl": output_path,
 
-            # Never download playlist
+            # No playlists
             "noplaylist": True,
 
-            # Useful logs during deployment
+            # Show errors
             "quiet": False,
             "no_warnings": False,
 
@@ -123,19 +103,19 @@ def download_youtube_audio(url: str) -> str:
             # Node.js is installed using packages.txt
             #
             "js_runtimes": {
-                "node": "/usr/bin/node"
+                "node": {}
             },
 
             # ------------------------------------------------
-            # yt-dlp EJS challenge solver
+            # EJS challenge solver
             # ------------------------------------------------
 
-            "remote_components": [
-                "ejs:github"
-            ],
+            "remote_components": {
+                "ejs": "github"
+            },
 
             # ------------------------------------------------
-            # Convert audio to WAV
+            # Convert to WAV
             # ------------------------------------------------
 
             "postprocessors": [
@@ -148,14 +128,14 @@ def download_youtube_audio(url: str) -> str:
         }
 
         # ----------------------------------------------------
-        # Add cookies only when available
+        # Add cookies
         # ----------------------------------------------------
 
         if cookie_file:
             ydl_opts["cookiefile"] = cookie_file
 
         # ----------------------------------------------------
-        # Start download
+        # Download
         # ----------------------------------------------------
 
         print(
@@ -169,27 +149,26 @@ def download_youtube_audio(url: str) -> str:
                 download=True
             )
 
-            # Get original downloaded filename
             original_path = ydl.prepare_filename(
                 info
             )
 
-            # FFmpegExtractAudio creates WAV
+            # FFmpeg changes extension to WAV
             wav_path = (
                 os.path.splitext(original_path)[0]
                 + ".wav"
             )
 
             # ------------------------------------------------
-            # Verify WAV file
+            # Check file
             # ------------------------------------------------
 
             if not os.path.exists(wav_path):
 
                 raise FileNotFoundError(
-                    "YouTube audio was downloaded, "
-                    "but WAV conversion failed.\n"
-                    f"Expected file: {wav_path}"
+                    "YouTube download completed, "
+                    "but WAV file was not created.\n"
+                    f"Expected: {wav_path}"
                 )
 
             print(
@@ -209,7 +188,7 @@ def download_youtube_audio(url: str) -> str:
     finally:
 
         # ----------------------------------------------------
-        # Delete temporary cookie file
+        # Remove temporary cookie file
         # ----------------------------------------------------
 
         if cookie_file:
@@ -222,12 +201,13 @@ def download_youtube_audio(url: str) -> str:
 
 
 # ============================================================
-# Local Audio / Video → WAV
+# Convert Local Audio / Video to WAV
 # ============================================================
 
 def convert_to_wav(input_path: str) -> str:
     """
-    Convert any audio/video file to mono 16 kHz WAV.
+    Convert any audio/video file to
+    mono 16 kHz WAV.
     """
 
     output_path = (
@@ -235,7 +215,6 @@ def convert_to_wav(input_path: str) -> str:
         + "_converted.wav"
     )
 
-    # Load audio/video using FFmpeg through pydub
     audio = AudioSegment.from_file(
         input_path
     )
@@ -247,7 +226,6 @@ def convert_to_wav(input_path: str) -> str:
         .set_frame_rate(16000)
     )
 
-    # Export WAV
     audio.export(
         output_path,
         format="wav"
@@ -257,19 +235,13 @@ def convert_to_wav(input_path: str) -> str:
 
 
 # ============================================================
-# Audio Chunking
+# Split Audio into Chunks
 # ============================================================
 
 def chunk_audio(
     wav_path: str,
     chunk_minutes: int = 10
 ) -> list:
-    """
-    Split WAV audio into chunks.
-
-    Default:
-        10 minutes per chunk.
-    """
 
     audio = AudioSegment.from_wav(
         wav_path
@@ -291,17 +263,14 @@ def chunk_audio(
         )
     ):
 
-        # Get current chunk
         chunk = audio[
             start:start + chunk_ms
         ]
 
-        # Chunk filename
         chunk_path = (
             f"{wav_path}_chunk_{i}.wav"
         )
 
-        # Export chunk
         chunk.export(
             chunk_path,
             format="wav"
@@ -319,15 +288,6 @@ def chunk_audio(
 # ============================================================
 
 def process_input(source: str) -> list:
-    """
-    Process either:
-
-    1. YouTube URL
-    2. Local audio/video file
-
-    Returns:
-        List of WAV audio chunks.
-    """
 
     # --------------------------------------------------------
     # YouTube URL
@@ -348,7 +308,7 @@ def process_input(source: str) -> list:
         )
 
     # --------------------------------------------------------
-    # Local file
+    # Local File
     # --------------------------------------------------------
 
     else:
@@ -363,7 +323,7 @@ def process_input(source: str) -> list:
         )
 
     # --------------------------------------------------------
-    # Chunk audio
+    # Chunk
     # --------------------------------------------------------
 
     print(
