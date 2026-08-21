@@ -4,4 +4,5 @@ __pycache__/
 *.pyc
 downloades/
 vector_db/
-   echo "youtube_cookies.txt" >> .gitignore
+youtube_cookies.txt
+.streamlit/secrets.toml
