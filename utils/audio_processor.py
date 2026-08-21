@@ -28,24 +28,30 @@ def get_youtube_cookie_file():
         cookies = st.secrets["youtube"]["cookies"]
 
     except (KeyError, FileNotFoundError):
-        print("WARNING: YouTube cookies not found.")
+        print("WARNING: YouTube cookies not found in Streamlit Secrets.")
         return None
 
     if not cookies or not cookies.strip():
         print("WARNING: YouTube cookies are empty.")
         return None
 
-    # Prevent accidental placeholder cookies
-    if "YOUR_VALUE" in cookies or "YOUR_HSID_VALUE" in cookies:
+    # Detect placeholder cookies
+    if (
+        "YOUR_VALUE" in cookies
+        or "YOUR_HSID_VALUE" in cookies
+        or "\tEXPIRY\t" in cookies
+    ):
         raise RuntimeError(
-            "Invalid YouTube cookies. "
-            "Replace them with a real fresh cookies.txt export."
+            "Invalid YouTube cookies detected. "
+            "Export a fresh Netscape cookies.txt file "
+            "and replace the Streamlit secret."
         )
 
-    if "\tEXPIRY\t" in cookies:
-        raise RuntimeError(
-            "Invalid YouTube cookies. "
-            "EXPIRY placeholders were detected."
+    # Basic Netscape-format check
+    if "# Netscape HTTP Cookie File" not in cookies:
+        print(
+            "WARNING: Cookie file does not contain the "
+            "usual Netscape header."
         )
 
     cookie_file = tempfile.NamedTemporaryFile(
@@ -59,6 +65,7 @@ def get_youtube_cookie_file():
         cookie_file.write(
             cookies.strip() + "\n"
         )
+
         cookie_file.close()
 
         print("YouTube cookie file created.")
@@ -81,6 +88,9 @@ def get_youtube_cookie_file():
 # ============================================================
 
 def download_youtube_audio(url: str) -> str:
+    """
+    Download YouTube audio and convert it to WAV.
+    """
 
     url = url.strip()
 
@@ -88,11 +98,13 @@ def download_youtube_audio(url: str) -> str:
     # Validate URL
     # --------------------------------------------------------
 
-    if not (
-        url.startswith("https://www.youtube.com/")
-        or url.startswith("https://youtube.com/")
-        or url.startswith("https://youtu.be/")
-    ):
+    valid_prefixes = (
+        "https://www.youtube.com/",
+        "https://youtube.com/",
+        "https://youtu.be/",
+    )
+
+    if not url.startswith(valid_prefixes):
         raise ValueError(
             f"Invalid YouTube URL: {url}"
         )
@@ -112,7 +124,7 @@ def download_youtube_audio(url: str) -> str:
     try:
 
         # ----------------------------------------------------
-        # Cookies
+        # Get cookies
         # ----------------------------------------------------
 
         cookie_file = get_youtube_cookie_file()
@@ -120,16 +132,28 @@ def download_youtube_audio(url: str) -> str:
         # ----------------------------------------------------
         # yt-dlp configuration
         # ----------------------------------------------------
+        #
+        # IMPORTANT:
+        #
+        # Do NOT force:
+        # tv
+        # web_safari
+        # android
+        # ios
+        #
+        # Let the installed yt-dlp + bgutil provider
+        # select the appropriate client.
+        # ----------------------------------------------------
 
         ydl_opts = {
 
-            # Audio only
+            # Best available audio
             "format": "bestaudio/best",
 
             # Output
             "outtmpl": output_path,
 
-            # Don't download playlists
+            # Never download playlists
             "noplaylist": True,
 
             # Logs
@@ -137,30 +161,29 @@ def download_youtube_audio(url: str) -> str:
             "no_warnings": False,
 
             # ------------------------------------------------
-            # IMPORTANT:
-            # Do NOT force tv/web_safari/android/ios here.
-            #
-            # Current YouTube extraction has issues with some
-            # forced clients and can return:
-            #
-            # "The page needs to be reloaded."
-            # ------------------------------------------------
-
-            # ------------------------------------------------
             # JavaScript runtime
             # ------------------------------------------------
-
+            #
+            # Deno is available in your deployment.
+            #
             "js_runtimes": {
                 "deno": {}
             },
 
             # ------------------------------------------------
-            # EJS challenge solver
+            # EJS remote component
             # ------------------------------------------------
 
             "remote_components": [
                 "ejs:github"
             ],
+
+            # ------------------------------------------------
+            # Retry configuration
+            # ------------------------------------------------
+
+            "retries": 3,
+            "fragment_retries": 3,
 
             # ------------------------------------------------
             # Convert audio to WAV
@@ -197,6 +220,10 @@ def download_youtube_audio(url: str) -> str:
         # Download
         # ----------------------------------------------------
 
+        print(
+            "Running yt-dlp..."
+        )
+
         with yt_dlp.YoutubeDL(
             ydl_opts
         ) as ydl:
@@ -207,11 +234,13 @@ def download_youtube_audio(url: str) -> str:
             )
 
             original_path = (
-                ydl.prepare_filename(info)
+                ydl.prepare_filename(
+                    info
+                )
             )
 
         # ----------------------------------------------------
-        # WAV path
+        # Determine WAV path
         # ----------------------------------------------------
 
         base_path = os.path.splitext(
@@ -229,8 +258,9 @@ def download_youtube_audio(url: str) -> str:
         if not os.path.exists(
             wav_path
         ):
+
             raise FileNotFoundError(
-                "YouTube audio was downloaded, "
+                "YouTube audio downloaded, "
                 "but WAV conversion failed.\n"
                 f"Expected: {wav_path}"
             )
@@ -254,13 +284,15 @@ def download_youtube_audio(url: str) -> str:
     finally:
 
         # ----------------------------------------------------
-        # Remove temporary cookies
+        # Delete temporary cookie file
         # ----------------------------------------------------
 
         if cookie_file:
 
             try:
-                os.unlink(cookie_file)
+                os.unlink(
+                    cookie_file
+                )
             except OSError:
                 pass
 
@@ -272,9 +304,15 @@ def download_youtube_audio(url: str) -> str:
 def convert_to_wav(
     input_path: str,
 ) -> str:
+    """
+    Convert any local audio/video file to
+    mono 16 kHz WAV.
+    """
 
     output_path = (
-        os.path.splitext(input_path)[0]
+        os.path.splitext(
+            input_path
+        )[0]
         + "_converted.wav"
     )
 
@@ -304,6 +342,9 @@ def chunk_audio(
     wav_path: str,
     chunk_minutes: int = 10,
 ) -> list:
+    """
+    Split WAV audio into fixed-length chunks.
+    """
 
     audio = AudioSegment.from_wav(
         wav_path
@@ -352,6 +393,10 @@ def chunk_audio(
 def process_input(
     source: str,
 ) -> list:
+    """
+    Process either a YouTube URL or local file
+    and return audio chunks.
+    """
 
     source = source.strip()
 
