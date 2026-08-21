@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 import tempfile
 
 import streamlit as st
@@ -15,22 +17,73 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 # ============================================================
+# Check JavaScript Runtime
+# ============================================================
+
+def check_node():
+    """
+    Check whether Node.js is available on the machine.
+    """
+
+    node_path = shutil.which("node")
+
+    if not node_path:
+        print("WARNING: Node.js was not found.")
+        return False
+
+    try:
+        result = subprocess.run(
+            [node_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        print(
+            f"Node.js detected: {result.stdout.strip()}"
+        )
+
+        return True
+
+    except Exception as e:
+        print(
+            f"Node.js check failed: {e}"
+        )
+        return False
+
+
+# ============================================================
 # Get YouTube Cookies from Streamlit Secrets
 # ============================================================
 
 def get_youtube_cookie_file():
     """
-    Read YouTube cookies from Streamlit Secrets and create
-    a temporary Netscape cookie file.
+    Read YouTube cookies from Streamlit Secrets
+    and create a temporary Netscape cookie file.
+
+    Streamlit secrets format:
+
+    [youtube]
+
+    cookies = '''
+    # Netscape HTTP Cookie File
+    ...
+    '''
     """
 
     try:
         cookies = st.secrets["youtube"]["cookies"]
 
     except (KeyError, FileNotFoundError):
+        print(
+            "No YouTube cookies found in Streamlit Secrets."
+        )
         return None
 
     if not cookies or not cookies.strip():
+        print(
+            "YouTube cookies are empty."
+        )
         return None
 
     cookie_file = tempfile.NamedTemporaryFile(
@@ -41,15 +94,25 @@ def get_youtube_cookie_file():
     )
 
     try:
-        cookie_file.write(cookies)
+
+        cookie_file.write(
+            cookies
+        )
+
         cookie_file.close()
+
+        print(
+            "YouTube cookie file created."
+        )
 
         return cookie_file.name
 
     except Exception:
+
         try:
             cookie_file.close()
             os.unlink(cookie_file.name)
+
         except OSError:
             pass
 
@@ -61,10 +124,23 @@ def get_youtube_cookie_file():
 # ============================================================
 
 def download_youtube_audio(url: str) -> str:
+    """
+    Download YouTube audio and convert it to WAV.
+
+    Requires:
+
+        yt-dlp
+        FFmpeg
+        Node.js
+
+    Optional:
+
+        YouTube cookies from Streamlit Secrets
+    """
 
     output_path = os.path.join(
         DOWNLOAD_DIR,
-        "%(id)s.%(ext)s"
+        "%(id)s.%(ext)s",
     )
 
     cookie_file = None
@@ -72,10 +148,26 @@ def download_youtube_audio(url: str) -> str:
     try:
 
         # ----------------------------------------------------
+        # Check Node.js
+        # ----------------------------------------------------
+
+        node_available = check_node()
+
+        if not node_available:
+
+            raise RuntimeError(
+                "Node.js is not available on this "
+                "Streamlit Cloud machine. "
+                "Make sure packages.txt contains: nodejs"
+            )
+
+        # ----------------------------------------------------
         # Get cookies
         # ----------------------------------------------------
 
-        cookie_file = get_youtube_cookie_file()
+        cookie_file = (
+            get_youtube_cookie_file()
+        )
 
         # ----------------------------------------------------
         # yt-dlp configuration
@@ -83,16 +175,16 @@ def download_youtube_audio(url: str) -> str:
 
         ydl_opts = {
 
-            # Best audio
+            # Best available audio
             "format": "bestaudio/best",
 
-            # Output
+            # Output filename
             "outtmpl": output_path,
 
-            # No playlists
+            # Don't download playlists
             "noplaylist": True,
 
-            # Show errors
+            # Logging
             "quiet": False,
             "no_warnings": False,
 
@@ -100,22 +192,25 @@ def download_youtube_audio(url: str) -> str:
             # JavaScript runtime
             # ------------------------------------------------
             #
-            # Node.js is installed using packages.txt
+            # Node.js comes from packages.txt
             #
             "js_runtimes": {
                 "node": {}
             },
 
             # ------------------------------------------------
-            # EJS challenge solver
+            # EJS remote component
             # ------------------------------------------------
-
-            "remote_components": {
-                "ejs": "github"
-            },
+            #
+            # IMPORTANT:
+            # This must be a LIST.
+            #
+            "remote_components": [
+                "ejs:github"
+            ],
 
             # ------------------------------------------------
-            # Convert to WAV
+            # Convert audio to WAV
             # ------------------------------------------------
 
             "postprocessors": [
@@ -132,7 +227,10 @@ def download_youtube_audio(url: str) -> str:
         # ----------------------------------------------------
 
         if cookie_file:
-            ydl_opts["cookiefile"] = cookie_file
+
+            ydl_opts["cookiefile"] = (
+                cookie_file
+            )
 
         # ----------------------------------------------------
         # Download
@@ -142,28 +240,45 @@ def download_youtube_audio(url: str) -> str:
             "Starting YouTube download..."
         )
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        print(
+            f"URL: {url}"
+        )
+
+        with yt_dlp.YoutubeDL(
+            ydl_opts
+        ) as ydl:
 
             info = ydl.extract_info(
                 url,
-                download=True
+                download=True,
             )
 
-            original_path = ydl.prepare_filename(
-                info
+            # ------------------------------------------------
+            # Get original filename
+            # ------------------------------------------------
+
+            original_path = (
+                ydl.prepare_filename(info)
             )
 
-            # FFmpeg changes extension to WAV
+            # ------------------------------------------------
+            # FFmpeg creates WAV
+            # ------------------------------------------------
+
             wav_path = (
-                os.path.splitext(original_path)[0]
+                os.path.splitext(
+                    original_path
+                )[0]
                 + ".wav"
             )
 
             # ------------------------------------------------
-            # Check file
+            # Check WAV
             # ------------------------------------------------
 
-            if not os.path.exists(wav_path):
+            if not os.path.exists(
+                wav_path
+            ):
 
                 raise FileNotFoundError(
                     "YouTube download completed, "
@@ -172,7 +287,8 @@ def download_youtube_audio(url: str) -> str:
                 )
 
             print(
-                f"YouTube audio saved: {wav_path}"
+                f"YouTube audio saved: "
+                f"{wav_path}"
             )
 
             return wav_path
@@ -188,13 +304,15 @@ def download_youtube_audio(url: str) -> str:
     finally:
 
         # ----------------------------------------------------
-        # Remove temporary cookie file
+        # Delete temporary cookie file
         # ----------------------------------------------------
 
         if cookie_file:
 
             try:
-                os.unlink(cookie_file)
+                os.unlink(
+                    cookie_file
+                )
 
             except OSError:
                 pass
@@ -204,14 +322,19 @@ def download_youtube_audio(url: str) -> str:
 # Convert Local Audio / Video to WAV
 # ============================================================
 
-def convert_to_wav(input_path: str) -> str:
+def convert_to_wav(
+    input_path: str
+) -> str:
+
     """
     Convert any audio/video file to
     mono 16 kHz WAV.
     """
 
     output_path = (
-        os.path.splitext(input_path)[0]
+        os.path.splitext(
+            input_path
+        )[0]
         + "_converted.wav"
     )
 
@@ -228,7 +351,7 @@ def convert_to_wav(input_path: str) -> str:
 
     audio.export(
         output_path,
-        format="wav"
+        format="wav",
     )
 
     return output_path
@@ -240,7 +363,7 @@ def convert_to_wav(input_path: str) -> str:
 
 def chunk_audio(
     wav_path: str,
-    chunk_minutes: int = 10
+    chunk_minutes: int = 10,
 ) -> list:
 
     audio = AudioSegment.from_wav(
@@ -259,7 +382,7 @@ def chunk_audio(
         range(
             0,
             len(audio),
-            chunk_ms
+            chunk_ms,
         )
     ):
 
@@ -268,12 +391,13 @@ def chunk_audio(
         ]
 
         chunk_path = (
-            f"{wav_path}_chunk_{i}.wav"
+            f"{wav_path}"
+            f"_chunk_{i}.wav"
         )
 
         chunk.export(
             chunk_path,
-            format="wav"
+            format="wav",
         )
 
         chunks.append(
@@ -287,7 +411,9 @@ def chunk_audio(
 # Main Input Processor
 # ============================================================
 
-def process_input(source: str) -> list:
+def process_input(
+    source: str
+) -> list:
 
     # --------------------------------------------------------
     # YouTube URL
@@ -303,12 +429,14 @@ def process_input(source: str) -> list:
             "Downloading audio..."
         )
 
-        wav_path = download_youtube_audio(
-            source
+        wav_path = (
+            download_youtube_audio(
+                source
+            )
         )
 
     # --------------------------------------------------------
-    # Local File
+    # Local file
     # --------------------------------------------------------
 
     else:
@@ -318,12 +446,14 @@ def process_input(source: str) -> list:
             "Converting to WAV..."
         )
 
-        wav_path = convert_to_wav(
-            source
+        wav_path = (
+            convert_to_wav(
+                source
+            )
         )
 
     # --------------------------------------------------------
-    # Chunk
+    # Chunk audio
     # --------------------------------------------------------
 
     print(
