@@ -9,20 +9,6 @@ from core.rag_engine import build_rag_chain, ask_question
 
 load_dotenv()
 
-# ─── Write YouTube cookies from Secrets to disk for yt-dlp ──────────────────────
-try:
-    if "youtube" in st.secrets and "cookies" in st.secrets["youtube"]:
-        cookie_content = st.secrets["youtube"]["cookies"]
-        with open("youtube_cookies.txt", "w") as f:
-            f.write(cookie_content)
-        # TEMPORARY DEBUG — remove once confirmed working
-        st.sidebar.info(f"Cookie file: {len(cookie_content)} chars written")
-        st.sidebar.code(cookie_content[:200])
-    else:
-        st.sidebar.warning("No youtube.cookies found in st.secrets")
-except FileNotFoundError:
-    st.sidebar.warning("No secrets.toml found (expected locally without one)")
-
 # ─── Page Config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AI Video Assistant",
