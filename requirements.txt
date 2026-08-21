@@ -1,8 +1,9 @@
 # ── AI Meeting Assistant ──────────────────────────────────────────────
 # Python 3.12
 
-# ── Audio / Video acquisition ─────────────────────────────────────────
+# Audio / Video
 yt-dlp[default]
+bgutil-ytdlp-pot-provider
 pydub>=0.25.1
 ffmpeg-python>=0.2.0
 
