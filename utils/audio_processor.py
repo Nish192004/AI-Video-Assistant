@@ -15,7 +15,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 # ============================================================
-# Create YouTube Cookie File from Streamlit Secrets
+# YouTube Cookies
 # ============================================================
 
 def get_youtube_cookie_file():
@@ -28,27 +28,26 @@ def get_youtube_cookie_file():
         cookies = st.secrets["youtube"]["cookies"]
 
     except (KeyError, FileNotFoundError):
-        print("WARNING: YouTube cookies not found in Streamlit Secrets.")
+        print("WARNING: YouTube cookies not found.")
         return None
 
     if not cookies or not cookies.strip():
         print("WARNING: YouTube cookies are empty.")
         return None
 
-    # Detect accidental placeholder cookies
+    # Prevent accidental placeholder cookies
     if "YOUR_VALUE" in cookies or "YOUR_HSID_VALUE" in cookies:
         raise RuntimeError(
-            "Invalid YouTube cookies detected. "
-            "Replace the placeholder values with a fresh cookies.txt export."
+            "Invalid YouTube cookies. "
+            "Replace them with a real fresh cookies.txt export."
         )
 
     if "\tEXPIRY\t" in cookies:
         raise RuntimeError(
-            "Invalid YouTube cookies detected. "
-            "The cookie file still contains EXPIRY placeholders."
+            "Invalid YouTube cookies. "
+            "EXPIRY placeholders were detected."
         )
 
-    # Create temporary Netscape cookie file
     cookie_file = tempfile.NamedTemporaryFile(
         mode="w",
         suffix=".txt",
@@ -57,7 +56,9 @@ def get_youtube_cookie_file():
     )
 
     try:
-        cookie_file.write(cookies.strip() + "\n")
+        cookie_file.write(
+            cookies.strip() + "\n"
+        )
         cookie_file.close()
 
         print("YouTube cookie file created.")
@@ -65,6 +66,7 @@ def get_youtube_cookie_file():
         return cookie_file.name
 
     except Exception:
+
         try:
             cookie_file.close()
             os.unlink(cookie_file.name)
@@ -79,22 +81,17 @@ def get_youtube_cookie_file():
 # ============================================================
 
 def download_youtube_audio(url: str) -> str:
-    """
-    Download YouTube audio and convert it to WAV.
-    """
-
-    # --------------------------------------------------------
-    # Clean URL
-    # --------------------------------------------------------
 
     url = url.strip()
 
-    if not url.startswith(
-        (
-            "https://www.youtube.com/",
-            "https://youtube.com/",
-            "https://youtu.be/",
-        )
+    # --------------------------------------------------------
+    # Validate URL
+    # --------------------------------------------------------
+
+    if not (
+        url.startswith("https://www.youtube.com/")
+        or url.startswith("https://youtube.com/")
+        or url.startswith("https://youtu.be/")
     ):
         raise ValueError(
             f"Invalid YouTube URL: {url}"
@@ -104,10 +101,6 @@ def download_youtube_audio(url: str) -> str:
     print("Starting YouTube download...")
     print(f"URL: {url}")
     print("================================")
-
-    # --------------------------------------------------------
-    # Output
-    # --------------------------------------------------------
 
     output_path = os.path.join(
         DOWNLOAD_DIR,
@@ -119,7 +112,7 @@ def download_youtube_audio(url: str) -> str:
     try:
 
         # ----------------------------------------------------
-        # Get cookies from Streamlit Secrets
+        # Cookies
         # ----------------------------------------------------
 
         cookie_file = get_youtube_cookie_file()
@@ -130,7 +123,7 @@ def download_youtube_audio(url: str) -> str:
 
         ydl_opts = {
 
-            # Best available audio
+            # Audio only
             "format": "bestaudio/best",
 
             # Output
@@ -144,22 +137,33 @@ def download_youtube_audio(url: str) -> str:
             "no_warnings": False,
 
             # ------------------------------------------------
-            # YouTube clients
+            # IMPORTANT:
+            # Do NOT force tv/web_safari/android/ios here.
+            #
+            # Current YouTube extraction has issues with some
+            # forced clients and can return:
+            #
+            # "The page needs to be reloaded."
             # ------------------------------------------------
 
-            "extractor_args": {
-                "youtube": {
-                    "player_client": [
-                        "tv",
-                        "web_safari",
-                        "android",
-                        "ios",
-                    ],
-                },
+            # ------------------------------------------------
+            # JavaScript runtime
+            # ------------------------------------------------
+
+            "js_runtimes": {
+                "deno": {}
             },
 
             # ------------------------------------------------
-            # Convert to WAV
+            # EJS challenge solver
+            # ------------------------------------------------
+
+            "remote_components": [
+                "ejs:github"
+            ],
+
+            # ------------------------------------------------
+            # Convert audio to WAV
             # ------------------------------------------------
 
             "postprocessors": [
@@ -180,13 +184,13 @@ def download_youtube_audio(url: str) -> str:
             ydl_opts["cookiefile"] = cookie_file
 
             print(
-                "Using YouTube cookies from Streamlit Secrets."
+                "Using YouTube cookies."
             )
 
         else:
 
             print(
-                "WARNING: No YouTube cookies available."
+                "WARNING: No YouTube cookies found."
             )
 
         # ----------------------------------------------------
@@ -207,7 +211,7 @@ def download_youtube_audio(url: str) -> str:
             )
 
         # ----------------------------------------------------
-        # Expected WAV
+        # WAV path
         # ----------------------------------------------------
 
         base_path = os.path.splitext(
@@ -215,8 +219,7 @@ def download_youtube_audio(url: str) -> str:
         )[0]
 
         wav_path = (
-            base_path
-            + ".wav"
+            base_path + ".wav"
         )
 
         # ----------------------------------------------------
@@ -226,55 +229,32 @@ def download_youtube_audio(url: str) -> str:
         if not os.path.exists(
             wav_path
         ):
-
             raise FileNotFoundError(
-                "YouTube audio downloaded, "
+                "YouTube audio was downloaded, "
                 "but WAV conversion failed.\n"
                 f"Expected: {wav_path}"
             )
 
-        print(
-            "================================"
-        )
-
-        print(
-            "YouTube download successful!"
-        )
-
-        print(
-            f"WAV: {wav_path}"
-        )
-
-        print(
-            "================================"
-        )
+        print("================================")
+        print("YouTube download successful!")
+        print(f"WAV file: {wav_path}")
+        print("================================")
 
         return wav_path
 
     except Exception as e:
 
-        print(
-            "================================"
-        )
-
-        print(
-            "YouTube download failed:"
-        )
-
-        print(
-            str(e)
-        )
-
-        print(
-            "================================"
-        )
+        print("================================")
+        print("YouTube download failed:")
+        print(str(e))
+        print("================================")
 
         raise
 
     finally:
 
         # ----------------------------------------------------
-        # Delete temporary cookie file
+        # Remove temporary cookies
         # ----------------------------------------------------
 
         if cookie_file:
@@ -293,14 +273,8 @@ def convert_to_wav(
     input_path: str,
 ) -> str:
 
-    """
-    Convert local audio/video to mono 16 kHz WAV.
-    """
-
     output_path = (
-        os.path.splitext(
-            input_path
-        )[0]
+        os.path.splitext(input_path)[0]
         + "_converted.wav"
     )
 
@@ -331,10 +305,6 @@ def chunk_audio(
     chunk_minutes: int = 10,
 ) -> list:
 
-    """
-    Split WAV into fixed-length chunks.
-    """
-
     audio = AudioSegment.from_wav(
         wav_path
     )
@@ -360,8 +330,7 @@ def chunk_audio(
         ]
 
         chunk_path = (
-            f"{wav_path}"
-            f"_chunk_{i}.wav"
+            f"{wav_path}_chunk_{i}.wav"
         )
 
         chunk.export(

@@ -2,7 +2,7 @@
 # Python 3.12
 
 # Audio / Video
-yt-dlp[default]
+yt-dlp[default]>=2026.8.19
 bgutil-ytdlp-pot-provider
 pydub>=0.25.1
 ffmpeg-python>=0.2.0
