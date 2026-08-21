@@ -1,11 +1,74 @@
 import os
+import tempfile
+
+import streamlit as st
 import yt_dlp
 from pydub import AudioSegment
 
 
+# ─────────────────────────────────────────────
+# Configuration
+# ─────────────────────────────────────────────
+
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+
+# ─────────────────────────────────────────────
+# YouTube Cookies from Streamlit Secrets
+# ─────────────────────────────────────────────
+
+def get_youtube_cookie_file():
+    """
+    Create a temporary Netscape cookie file from
+    Streamlit Secrets.
+
+    Streamlit Secrets format:
+
+    [youtube]
+    cookies = '''
+    # Netscape HTTP Cookie File
+    ...
+    '''
+    """
+
+    try:
+        cookies = st.secrets["youtube"]["cookies"]
+
+    except (KeyError, FileNotFoundError):
+        return None
+
+    if not cookies or not cookies.strip():
+        return None
+
+    temp_file = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".txt",
+        delete=False,
+        encoding="utf-8",
+    )
+
+    try:
+        temp_file.write(cookies)
+        temp_file.flush()
+        temp_file.close()
+
+        return temp_file.name
+
+    except Exception:
+        temp_file.close()
+
+        try:
+            os.unlink(temp_file.name)
+        except OSError:
+            pass
+
+        raise
+
+
+# ─────────────────────────────────────────────
+# YouTube Download
+# ─────────────────────────────────────────────
 
 def download_youtube_audio(url: str) -> str:
     """
@@ -14,6 +77,14 @@ def download_youtube_audio(url: str) -> str:
     Requirements:
         - yt-dlp[default]
         - FFmpeg
+
+    Optional:
+        - YouTube cookies through Streamlit Secrets
+
+    Note:
+        Some YouTube formats currently require PO Tokens.
+        Cookies alone do not guarantee that every video
+        can be downloaded.
     """
 
     output_path = os.path.join(
@@ -21,46 +92,61 @@ def download_youtube_audio(url: str) -> str:
         "%(id)s.%(ext)s"
     )
 
-    ydl_opts = {
-        # Download best available audio
-        "format": "bestaudio/best",
-
-        # Output filename
-        "outtmpl": output_path,
-
-        # Convert audio to WAV
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "wav",
-                "preferredquality": "192",
-            }
-        ],
-
-        # Don't use browser cookies
-        "cookiefile": None,
-
-        # Don't download playlists
-        "noplaylist": True,
-
-        # Keep Streamlit logs reasonably clean
-        "quiet": True,
-        "no_warnings": False,
-    }
+    cookie_file = None
 
     try:
+        # Get cookies from Streamlit Secrets
+        cookie_file = get_youtube_cookie_file()
+
+        # ─────────────────────────────────────────
+        # yt-dlp configuration
+        # ─────────────────────────────────────────
+
+        ydl_opts = {
+            # Best available audio
+            "format": "bestaudio/best",
+
+            # Output filename
+            "outtmpl": output_path,
+
+            # Convert downloaded audio to WAV
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "wav",
+                    "preferredquality": "192",
+                }
+            ],
+
+            # Don't download playlists
+            "noplaylist": True,
+
+            # Keep logs useful during deployment
+            "quiet": False,
+            "no_warnings": False,
+
+            # Don't force tv/mweb/web clients
+            # Let yt-dlp choose the appropriate client
+        }
+
+        # Only add cookies when they actually exist
+        if cookie_file:
+            ydl_opts["cookiefile"] = cookie_file
+
+        # ─────────────────────────────────────────
+        # Download
+        # ─────────────────────────────────────────
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
 
-            # Download YouTube audio
             info = ydl.extract_info(
                 url,
                 download=True
             )
 
-            # Get downloaded filename
             original_path = ydl.prepare_filename(info)
 
-            # FFmpeg converts it to WAV
+            # FFmpegExtractAudio creates WAV
             wav_path = (
                 os.path.splitext(original_path)[0]
                 + ".wav"
@@ -68,21 +154,40 @@ def download_youtube_audio(url: str) -> str:
 
             if not os.path.exists(wav_path):
                 raise FileNotFoundError(
-                    f"WAV file was not created: {wav_path}"
+                    "YouTube audio was downloaded, "
+                    "but the WAV file was not created."
                 )
 
             return wav_path
 
     except Exception as e:
+
         print(
             f"YouTube download failed: {e}"
         )
+
         raise
 
+    finally:
+
+        # Remove temporary cookie file
+        if cookie_file:
+
+            try:
+                os.unlink(cookie_file)
+
+            except OSError:
+                pass
+
+
+# ─────────────────────────────────────────────
+# Local File → WAV
+# ─────────────────────────────────────────────
 
 def convert_to_wav(input_path: str) -> str:
     """
-    Convert any audio/video file to mono 16 kHz WAV.
+    Convert any audio/video file to
+    mono 16 kHz WAV.
     """
 
     output_path = (
@@ -94,7 +199,8 @@ def convert_to_wav(input_path: str) -> str:
         input_path
     )
 
-    # Convert to mono 16 kHz
+    # Whisper-friendly audio:
+    # mono + 16 kHz
     audio = (
         audio
         .set_channels(1)
@@ -109,6 +215,10 @@ def convert_to_wav(input_path: str) -> str:
     return output_path
 
 
+# ─────────────────────────────────────────────
+# Audio Chunking
+# ─────────────────────────────────────────────
+
 def chunk_audio(
     wav_path: str,
     chunk_minutes: int = 10
@@ -119,13 +229,19 @@ def chunk_audio(
     )
 
     chunk_ms = (
-        chunk_minutes * 60 * 1000
+        chunk_minutes
+        * 60
+        * 1000
     )
 
     chunks = []
 
     for i, start in enumerate(
-        range(0, len(audio), chunk_ms)
+        range(
+            0,
+            len(audio),
+            chunk_ms
+        )
     ):
 
         chunk = audio[
@@ -146,8 +262,13 @@ def chunk_audio(
     return chunks
 
 
+# ─────────────────────────────────────────────
+# Main Input Processor
+# ─────────────────────────────────────────────
+
 def process_input(source: str) -> list:
 
+    # YouTube / HTTP URL
     if (
         source.startswith("http://")
         or source.startswith("https://")
@@ -162,6 +283,7 @@ def process_input(source: str) -> list:
             source
         )
 
+    # Local file
     else:
 
         print(
@@ -173,6 +295,7 @@ def process_input(source: str) -> list:
             source
         )
 
+    # Chunk audio
     print("Chunking audio...")
 
     chunks = chunk_audio(
